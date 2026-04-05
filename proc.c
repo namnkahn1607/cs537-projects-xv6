@@ -496,6 +496,31 @@ kill(int pid)
   return -1;
 }
 
+// Return the number of files that the
+// process identified by pid currently
+// has opened.
+int getfilenum(int pid) {
+    struct proc *p;
+    acquire(&ptable.lock);
+
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; ++p) {
+        if (p->pid == pid) {
+            int opened_file = 0;
+            for (int pd = 0; pd < NOFILE; ++pd) {
+                if (p->ofile[pd] != 0) {
+                    ++opened_file;
+                }
+            }
+
+            release(&ptable.lock);
+            return opened_file;
+        }
+    }
+
+    release(&ptable.lock);
+    return -1;
+}
+
 //PAGEBREAK: 36
 // Print a process listing to console.  For debugging.
 // Runs when user types ^P on console.
