@@ -49,156 +49,189 @@ void shell(FILE *file) {
             break;
         }
 
-        // Arguments parsing & tokenization
-        char *argv[MAX_ARGS + 1];
-        argv[MAX_ARGS] = NULL;
-        int argc = 0;
+        
 
         char *processed_line = preprocess(lineptr);
-        char *line = processed_line;
-        char *token;
-        while ((token = strsep(&line, " \t\n")) != NULL) {
-            if (argc > MAX_ARGS) {
-                fprintf(stderr, "An error has occurred\n");
-                goto close_shell;
-            }
 
-            // Tokens given by strsep() can be '\0', imagine
-            // tokenizing a string "ls     t", that's 5 SPACES.
-            if (token[0] != '\0') {
-                argv[argc++] = token;
-            }
-        }
-
-        argv[argc] = NULL; // End-of-argument
-        free(processed_line);
-
-        // Can't read any args, move to the 
-        // next prompt line (by continuing).
-        if (argc == 0) {
-            continue;
-        }
-
-        // Handle built-in commands
-        if (strcmp(argv[0], "exit") == 0) { // EXIT
-            if (argc > 1) {
-                fprintf(stderr, "An error has occurred\n");
-            }
-
-            exit(0);
-
-        } else if (strcmp(argv[0], "cd") == 0) { // CD
-            if (argc != 2 || chdir(argv[1]) != 0) {
-                fprintf(stderr, "An error has occurred\n");
-            }
-
-            continue;
-
-        } else if (strcmp(argv[0], "path") == 0) { // PATH
-            if (argc <= 2) {
-                fprintf(stderr, "An error has occurred\n");
+        // Multiple (Sequential) Commands
+        char *seq_line = processed_line;
+        char *seq_cmd;
+        while ((seq_cmd = strsep(&seq_line, ";")) != NULL) {
+            if (seq_cmd[0] == '\0') {
                 continue;
             }
 
-            if (strcmp(argv[1], "add") == 0 && argc == 3) {
-                if (path_count == path_capacity) {
-                    path_capacity *= 2;
-                    paths = realloc(paths, path_capacity * sizeof(char*));
+            // Parallel Commands
+            int wait_count = 0;
+            char *para_cmd;
+            while ((para_cmd = strsep(&seq_cmd, "&")) != NULL) {
+                if (para_cmd[0] == '\0') {
+                    continue;
                 }
 
-                for (int i = path_count - 1; i >= 0; --i) {
-                    paths[i + 1] = paths[i];
+                // Arguments parsing & tokenization
+                char *argv[MAX_ARGS + 1];
+                argv[MAX_ARGS] = NULL;
+                int argc = 0;
+
+                char *token;
+                while ((token = strsep(&para_cmd, " \t\n")) != NULL) {
+                    if (argc > MAX_ARGS) {
+                        fprintf(stderr, "An error has occurred\n");
+                        goto close_shell;
+                    }
+
+                    // Tokens given by strsep() can be '\0', imagine
+                    // tokenizing a string "ls     t", that's 5 SPACES.
+                    if (token[0] != '\0') {
+                        argv[argc++] = token;
+                    }
                 }
 
-                paths[0] = strdup(argv[2]);
-                ++path_count;
+                argv[argc] = NULL; // End-of-argument
 
-            } else if (strcmp(argv[1], "remove") == 0 && argc == 3) {
-                for (int i = 0; i < path_count; ++i) {
-                    if (strcmp(paths[i], argv[2]) == 0) {
-                        free(paths[i]);
-                        --path_count;
-                        for (int j = i; j < path_count - 1; ++j) {
-                            paths[j] = paths[j + 1];
-                        }
+                // Can't read any args, move to the 
+                // next prompt line (by continuing).
+                if (argc == 0) {
+                    continue;
+                }
 
+                // Handle built-in commands
+                if (strcmp(argv[0], "exit") == 0) { // EXIT
+                    if (argc > 1) {
+                        fprintf(stderr, "An error has occurred\n");
+                    }
+
+                    exit(0);
+
+                } else if (strcmp(argv[0], "cd") == 0) { // CD
+                    if (argc != 2 || chdir(argv[1]) != 0) {
+                        fprintf(stderr, "An error has occurred\n");
+                    }
+
+                    continue;
+
+                } else if (strcmp(argv[0], "path") == 0) { // PATH
+                    if (argc <= 2) {
+                        fprintf(stderr, "An error has occurred\n");
                         continue;
                     }
-                }
 
-                fprintf(stderr, "An error has occurred\n");
-                
-            } else if (strcmp(argv[1], "clear") == 0 && argc == 2) {
-                for (int i = 0; i < path_count; ++i) {
-                    free(paths[i]);
-                }
+                    if (strcmp(argv[1], "add") == 0 && argc == 3) {
+                        if (path_count == path_capacity) {
+                            path_capacity *= 2;
+                            paths = realloc(paths, path_capacity * sizeof(char*));
+                        }
 
-                path_count = 0;
-            
-            } else {
-                fprintf(stderr, "An error has occurred\n");
-            }
+                        for (int i = path_count - 1; i >= 0; --i) {
+                            paths[i + 1] = paths[i];
+                        }
 
-            continue;
-        }
+                        paths[0] = strdup(argv[2]);
+                        ++path_count;
 
-        // System command execution
-        int child_pid = fork();
-        if (child_pid < 0) {
-            fprintf(stderr, "An error has occurred\n");
-            continue;
-        } else if (child_pid == 0) {
+                    } else if (strcmp(argv[1], "remove") == 0 && argc == 3) {
+                        int found = 0;
 
-            // Handle output redirection with '>'
-            int first_redir;
-            int redir_count = 0;
-            for (int i = 0; i < argc; ++i) {
-                if (strcmp(argv[i], ">")) {
-                    if (redir_count == 0) {
-                        first_redir = i;
+                        for (int i = 0; i < path_count; ++i) {
+                            if (strcmp(paths[i], argv[2]) == 0) {
+                                found = 1;
+                                free(paths[i]);
+                                --path_count;
+                                for (int j = i; j < path_count; ++j) {
+                                    paths[j] = paths[j + 1];
+                                }
+
+                                break;
+                            }
+                        }
+                        
+                        if (!found) {
+                            fprintf(stderr, "An error has occurred\n");
+                        }
+                        
+                    } else if (strcmp(argv[1], "clear") == 0 && argc == 2) {
+                        for (int i = 0; i < path_count; ++i) {
+                            free(paths[i]);
+                        }
+
+                        path_count = 0;
+                    
+                    } else {
+                        fprintf(stderr, "An error has occurred\n");
                     }
 
-                    ++redir_count;
+                    continue;
                 }
-            } 
 
-            if (redir_count > 1 || first_redir < 1 || argc - first_redir != 2) {
-                fprintf(stderr, "An error has occurred\n");
-                exit(1);
-            } else {
-                int new_fd = open(argv[first_redir + 1], O_CREAT | O_WRONLY | O_TRUNC, 0644);
-                if (new_fd == -1 || dup2(new_fd, STDOUT_FILENO) == -1 || dup2(new_fd, STDERR_FILENO)) {
+                // System command execution
+                int child_pid = fork();
+                if (child_pid < 0) {
                     fprintf(stderr, "An error has occurred\n");
-                    exit(1);
+                    continue;
+
+                } else if (child_pid == 0) {
+                    // Handle output redirection with '>'
+                    int first_redir;
+                    int redir_count = 0;
+                    for (int i = 0; i < argc; ++i) {
+                        if (strcmp(argv[i], ">") == 0) {
+                            if (redir_count == 0) {
+                                first_redir = i;
+                            }
+
+                            ++redir_count;
+                        }
+                    } 
+
+                    if (redir_count > 0) {
+                        if (redir_count > 1 || first_redir < 1 || argc - first_redir != 2) {
+                        fprintf(stderr, "An error has occurred\n");
+                        exit(1);
+                        } else {
+                            int new_fd = open(argv[first_redir + 1], O_CREAT | O_WRONLY | O_TRUNC, 0644);
+                            if (new_fd == -1 || dup2(new_fd, STDOUT_FILENO) == -1 || dup2(new_fd, STDERR_FILENO) == -1) {
+                                fprintf(stderr, "An error has occurred\n");
+                                exit(1);
+                            }
+
+                            argv[first_redir] = NULL;
+                        }
+                    }
+                    
+                    size_t exec_len = strlen(argv[0]);
+                    for (int i = 0; i < path_count; ++i) {
+                        char *exec_dir = malloc(strlen(paths[i]) + 1 + exec_len + 1);
+                        exec_dir = strcpy(exec_dir, paths[i]);
+                        exec_dir = strcat(exec_dir, "/");
+                        exec_dir = strcat(exec_dir, argv[0]);
+
+                        if (access(exec_dir, X_OK) == 0) {
+                            argv[0] = exec_dir;
+                            break;
+                        }
+
+                        free(exec_dir);
+                    }
+
+                    free(lineptr);
+                    if (execv(argv[0], argv) == -1) {
+                        fprintf(stderr, "An error has occurred\n");
+                        exit(1);
+                    }
+
+                } else {
+                    ++wait_count;
                 }
-
-                argv[first_redir] = NULL;
             }
 
-            size_t exec_len = strlen(argv[0]);
-            for (int i = 0; i < path_count; ++i) {
-                char *exec_dir = malloc(strlen(paths[i]) + 1 + exec_len + 1);
-                exec_dir = strcpy(exec_dir, paths[i]);
-                exec_dir = strcat(exec_dir, "/");
-                exec_dir = strcat(exec_dir, argv[0]);
-
-                if (access(exec_dir, X_OK) == 0) {
-                    argv[0] = exec_dir;
-                    break;
-                }
-
-                free(exec_dir);
+            while (wait_count > 0) {
+                wait(NULL);
+                --wait_count;
             }
-
-            free(lineptr);
-            if (execv(argv[0], argv) == -1) {
-                fprintf(stderr, "An error has occurred\n");
-                exit(1);
-            }
-
-        } else {
-            wait(NULL);
         }
+
+        free(processed_line);
     }
 
 close_shell:
