@@ -49,8 +49,6 @@ void shell(FILE *file) {
             break;
         }
 
-        
-
         char *processed_line = preprocess(lineptr);
 
         // Multiple (Sequential) Commands
@@ -78,6 +76,7 @@ void shell(FILE *file) {
                 while ((token = strsep(&para_cmd, " \t\n")) != NULL) {
                     if (argc > MAX_ARGS) {
                         fprintf(stderr, "An error has occurred\n");
+                        free(processed_line);
                         goto close_shell;
                     }
 
@@ -102,6 +101,12 @@ void shell(FILE *file) {
                         fprintf(stderr, "An error has occurred\n");
                     }
 
+                    for (int i = 0; i < path_count; ++i) {
+                        free(paths[i]);
+                    }
+
+                    free(paths);
+                    free(lineptr);
                     exit(0);
 
                 } else if (strcmp(argv[0], "cd") == 0) { // CD
@@ -215,6 +220,7 @@ void shell(FILE *file) {
                     }
 
                     free(lineptr);
+                    
                     if (execv(argv[0], argv) == -1) {
                         fprintf(stderr, "An error has occurred\n");
                         exit(1);
@@ -235,7 +241,15 @@ void shell(FILE *file) {
     }
 
 close_shell:
-    free(lineptr);
+    if (lineptr != NULL) {
+        free(lineptr);
+    }
+
+    for (int i = 0; i < path_count; ++i) {
+        free(paths[i]);
+    }
+
+    free(paths);
 }
 
 int main(int argc, char* argv[]) {
